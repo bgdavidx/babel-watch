@@ -11,6 +11,7 @@ const util = require('util');
 const fork = require('child_process').fork;
 const execSync = require('child_process').execSync;
 const commander = require('commander');
+const _ = require('lodash');
 
 const RESTART_COMMAND = 'rs';
 
@@ -34,7 +35,6 @@ program.option('-x, --exclude [dir]', 'Exclude matching directory/files from wat
 program.option('-L, --use-polling', 'In some filesystems watch events may not work correcly. This option enables "polling" which should mitigate this type of issues');
 program.option('-D, --disable-autowatch', 'Don\'t automatically start watching changes in files "required" by the program');
 program.option('-H, --disable-ex-handler', 'Disable source-map-enhanced uncaught exception handler. (you may want to use this option in case your app registers a custom uncaught exception handler)');
-program.option('-m, --message [string]', 'Set custom message displayed on restart (default is ">>> RESTARTING <<<")');
 
 const pkg = require('./package.json');
 program.version(pkg.version);
@@ -120,6 +120,15 @@ process.on('SIGINT', function() {
   process.exit(1);
 });
 
+var handleChange = _.debounce(function(file) {
+  const absoluteFile = file.startsWith('/') ? file : path.join(cwd, file);
+  delete cache[absoluteFile];
+  delete errors[absoluteFile];
+
+  // file is in use by the app, let's restart!
+  restartApp();
+}, 100);
+
 watcher.on('change', handleChange);
 watcher.on('add', handleChange);
 watcher.on('unlink', handleChange);
@@ -144,15 +153,6 @@ stdin.on('data', (data) => {
     restartApp();
   }
 });
-
-function handleChange(file) {
-  const absoluteFile = file.startsWith('/') ? file : path.join(cwd, file);
-  delete cache[absoluteFile];
-  delete errors[absoluteFile];
-
-  // file is in use by the app, let's restart!
-  restartApp();
-}
 
 function generateTempFilename() {
   const now = new Date();
@@ -201,10 +201,10 @@ function killApp() {
     const currentPipeFilename = pipeFilename;
     childApp.on('exit', () => {
       if (currentPipeFd) {
-        fs.closeSync(currentPipeFd); // silently close pipe fd
+        fs.close(currentPipeFd); // silently close pipe fd - ignore callback
       }
       if (currentPipeFilename) {
-        fs.unlinkSync(currentPipeFilename); // silently remove old pipe file
+        fs.unlink(currentPipeFilename); // silently remove old pipe file - ignore callback
       }
       restartAppInternal();
     });
@@ -222,8 +222,7 @@ function killApp() {
 function prepareRestart() {
   if (watcherInitialized && childApp) {
     // kill app early as `compile` may take a while
-    var restartMessage = program.message ? program.message : ">>> RESTARTING <<<";
-    console.log(restartMessage);
+    console.log(">>> RESTARTING <<<");
     killApp();
   } else {
     restartAppInternal();
