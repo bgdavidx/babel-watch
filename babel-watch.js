@@ -265,7 +265,7 @@ function restartAppInternal() {
   }
   // Support for --inspect option
   if (program.inspect) {
-    runnerExecArgv.push('--inspect');
+    runnerExecArgv.push('--inspect=' + program.inspect);
   }
   // Support for --debug-brk
   if(program.debugBrk) {
