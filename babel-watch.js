@@ -135,15 +135,11 @@ if (isMainThread) {
     threads = true;
   }
 
-  if (threads) {
-    try {
-      require("worker_threads");
-    } catch (err) {
-      console.error(
-        "No worker_threads support! Try using option --experimental-worker when starting Node.js"
-      );
-      process.exit(1);
-    }
+  if (threads && loadWorkerThreads().workerSupported === false) {
+    console.error(
+      "No worker_threads support! Try using option --experimental-worker when starting Node.js"
+    );
+    process.exit(1);
   }
 
   let transpileExtensions = babel.util.canCompile.EXTENSIONS;
@@ -190,7 +186,6 @@ if (isMainThread) {
 
   var handleChange = function(file) {
     const absoluteFile = file.startsWith("/") ? file : path.resolve(cwd, file);
-    console.log("file changed", file, absoluteFile);
     delete cache[absoluteFile];
     delete errors[absoluteFile];
 
@@ -237,15 +232,16 @@ if (isMainThread) {
   }
 
   function handleFileLoad(filename, callback) {
-    const cached = cache[filename];
-    if (cached) {
-      const stats = fs.statSync(filename);
-      if (stats.mtime.getTime() === cached.mtime) {
-        callback(cache[filename].code, cache[filename].map);
-        return;
-      }
-    }
     if (!shouldIgnore(filename)) {
+      const cached = cache[filename];
+      if (cached) {
+        const stats = fs.statSync(filename);
+        if (stats.mtime.getTime() === cached.mtime) {
+          callback(cache[filename].code, cache[filename].map);
+          return;
+        }
+      }
+
       compile(filename, (err, result) => {
         if (err) {
           console.error("Babel compilation error", err, err.stack);
